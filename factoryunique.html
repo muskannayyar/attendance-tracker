@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Factory Attendance Tracker</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 20px;
+      background-color: #f5f5f5;
+    }
+    .container {
+      background: white;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      margin-bottom: 20px;
+    }
+    h1 { color: #333; }
+    button {
+      background-color: #4CAF50;
+      color: white;
+      padding: 10px 20px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 16px;
+      margin: 5px;
+    }
+    button:hover { background-color: #45a049; }
+    input, select {
+      padding: 8px;
+      margin: 5px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+    }
+    label {
+      font-weight: bold;
+      margin-right: 10px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 20px;
+    }
+    th, td {
+      padding: 12px;
+      text-align: left;
+      border-bottom: 1px solid #ddd;
+    }
+    th {
+      background-color: #4CAF50;
+      color: white;
+    }
+    .btn-edit {
+      background-color: #2196F3;
+    }
+    .btn-edit:hover {
+      background-color: #0b7dda;
+    }
+    .btn-delete {
+      background-color: #f44336;
+    }
+    .btn-delete:hover {
+      background-color: #da190b;
+    }
+  </style>
+</head>
+<body>
+  <h1>🏭 Factory Attendance & Wage Tracker</h1>
+  
+  <div class="container">
+    <h2>Add New Worker</h2>
+    <input type="text" id="workerName" placeholder="Worker Name">
+    <input type="text" id="employeeId" placeholder="Employee ID">
+    <input type="text" id="department" placeholder="Department">
+    <input type="number" id="hourlyRate" placeholder="Hourly Rate (₹)">
+    <button onclick="addWorker()">Add Worker</button>
+  </div>
+
+  <div class="container">
+    <h2>Workers List</h2>
+    <div id="workersList"></div>
+  </div>
+
+  <div class="container">
+    <h2>💰 Monthly Wage Calculator</h2>
+    <div style="margin-bottom: 15px;">
+      <label>Select Month: </label>
+      <input type="month" id="monthSelect" style="padding: 8px;">
+      <button onclick="calculateWages()">Calculate Wages</button>
+      <button onclick="exportToCSV()" style="background-color: #FF9800;">Export to CSV</button>
+    </div>
+    <div id="wageReport"></div>
+  </div>
+
+  <div class="container">
+    <h2>⏰ Add Attendance Record</h2>
+    <div style="margin-bottom: 15px;">
+      <label>Select Date: </label>
+      <input type="date" id="dateSelect" style="padding: 8px;">
+      <br><br>
+      <label>Select Worker: </label>
+      <select id="workerSelect" style="padding: 8px; border-radius: 4px; border: 1px solid #ddd; width: 250px;">
+        <option value="">-- Select a worker --</option>
+      </select>
+      <br><br>
+      <label>Clock In Time: </label>
+      <input type="time" id="clockInTime" value="09:00" style="padding: 8px;">
+      <label style="margin-left: 20px;">Clock Out Time: </label>
+      <input type="time" id="clockOutTime" value="17:00" style="padding: 8px;">
+      <br><br>
+      <button onclick="addAttendanceRecord()">Add Attendance</button>
+    </div>
+  </div>
+
+  <div class="container">
+    <h2>📋 All Attendance Records</h2>
+    <div id="allAttendance"></div>
+  </div>
+
+  <script>
+    let workers = [];
+    let attendanceRecords = [];
+
+    // Load data from browser storage when page loads
+    function loadData() {
+      const savedWorkers = localStorage.getItem('factoryWorkers');
+      const savedAttendance = localStorage.getItem('factoryAttendance');
+      
+      if (savedWorkers) {
+        workers = JSON.parse(savedWorkers);
+      }
+      if (savedAttendance) {
+        attendanceRecords = JSON.parse(savedAttendance);
+        // Convert date strings back to Date objects
+        attendanceRecords.forEach(record => {
+          record.clockIn = new Date(record.clockIn);
+          if (record.clockOut) {
+            record.clockOut = new Date(record.clockOut);
+          }
+        });
+      }
+    }
+
+    // Save data to browser storage
+    function saveData() {
+      localStorage.setItem('factoryWorkers', JSON.stringify(workers));
+      localStorage.setItem('factoryAttendance', JSON.stringify(attendanceRecords));
+    }
+
+    function addWorker() {
+      const name = document.getElementById('workerName').value;
+      const employeeId = document.getElementById('employeeId').value;
+      const department = document.getElementById('department').value;
+      const hourlyRate = document.getElementById('hourlyRate').value;
+
+      if (name && employeeId && department && hourlyRate) {
+        const worker = {
+          id: Date.now(),
+          name: name,
+          employeeId: employeeId,
+          department: department,
+          hourlyRate: parseFloat(hourlyRate)
+        };
+        
+        workers.push(worker);
+        saveData();
+        displayWorkers();
+        clearForm();
+        alert('Worker added successfully!');
+      } else {
+        alert('Please fill in all fields!');
+      }
+    }
+
+    function displayWorkers() {
+      const container = document.getElementById('workersList');
+      
+      if (workers.length === 0) {
+        container.innerHTML = '<p>No workers added yet.</p>';
+        updateWorkerSelect();
+        return;
+      }
+
+      let html = '<table><tr><th>Name</th><th>Employee ID</th><th>Department</th><th>Hourly Rate</th><th>Actions</th></tr>';
+      
+      workers.forEach(worker => {
+        html += `<tr>
+          <td>${worker.name}</td>
+          <td>${worker.employeeId}</td>
+          <td>${worker.department}</td>
+          <td>₹${worker.hourlyRate}</td>
+          <td>
+            <button class="btn-edit" onclick="editWorker(${worker.id})">Edit</button>
+            <button class="btn-delete" onclick="deleteWorker(${worker.id})">Delete</button>
+          </td>
+        </tr>`;
+      });
+      
+      html += '</table>';
+      container.innerHTML = html;
+      updateWorkerSelect();
+    }
+
+    function editWorker(workerId) {
+      const worker = workers.find(w => w.id === workerId);
+      if (worker) {
+        document.getElementById('workerName').value = worker.name;
+        document.getElementById('employeeId').value = worker.employeeId;
+        document.getElementById('department').value = worker.department;
+        document.getElementById('hourlyRate').value = worker.hourlyRate;
+        
+        // Remove the old worker
+        workers = workers.filter(w => w.id !== workerId);
+        saveData();
+        displayWorkers();
+        alert('Edit the details above and click "Add Worker" to save changes');
+      }
+    }
+
+    function deleteWorker(workerId) {
+      if (confirm('Are you sure you want to delete this worker?')) {
+        workers = workers.filter(w => w.id !== workerId);
+        saveData();
+        displayWorkers();
+      }
+    }
+
+    function clearForm() {
+      document.getElementById('workerName').value = '';
+      document.getElementById('employeeId').value = '';
+      document.getElementById('department').value = '';
+      document.getElementById('hourlyRate').value = '';
+    }
+
+    function updateWorkerSelect() {
+      const select = document.getElementById('workerSelect');
+      select.innerHTML = '<option value="">-- Select a worker --</option>';
+      
+      workers.forEach(worker => {
+        select.innerHTML += `<option value="${worker.id}">${worker.name} (${worker.employeeId})</option>`;
+      });
+    }
+
+    function addAttendanceRecord() {
+      const workerId = document.getElementById('workerSelect').value;
+      const selectedDate = document.getElementById('dateSelect').value;
+      const clockInTime = document.getElementById('clockInTime').value;
+      const clockOutTime = document.getElementById('clockOutTime').value;
+      
+      if (!workerId) {
+        alert('Please select a worker!');
+        return;
+      }
+      
+      if (!selectedDate) {
+        alert('Please select a date!');
+        return;
+      }
+      
+      if (!clockInTime || !clockOutTime) {
+        alert('Please enter both clock in and clock out times!');
+        return;
+      }
+      
+      const worker = workers.find(w => w.id == workerId);
+      
+      // Create full date-time objects
+      const clockInDateTime = new Date(`${selectedDate}T${clockInTime}`);
+      const clockOutDateTime = new Date(`${selectedDate}T${clockOutTime}`);
+      
+      if (clockOutDateTime <= clockInDateTime) {
+        alert('Clock out time must be after clock in time!');
+        return;
+      }
+      
+      const record = {
+        id: Date.now(),
+        workerId: workerId,
+        workerName: worker.name,
+        employeeId: worker.employeeId,
+        clockIn: clockInDateTime,
+        clockOut: clockOutDateTime,
+        date: selectedDate
+      };
+      
+      attendanceRecords.push(record);
+      saveData();
+      displayAllAttendance();
+      alert(`Attendance added for ${worker.name} on ${selectedDate}`);
+      
+      // Reset the worker selection
+      document.getElementById('workerSelect').value = '';
+    }
+
+    function displayAllAttendance() {
+      const container = document.getElementById('allAttendance');
+      
+      if (attendanceRecords.length === 0) {
+        container.innerHTML = '<p>No attendance records yet.</p>';
+        return;
+      }
+      
+      let html = '<table><tr><th>Date</th><th>Worker</th><th>Employee ID</th><th>Clock In</th><th>Clock Out</th><th>Hours</th><th>Actions</th></tr>';
+      
+      attendanceRecords.slice().reverse().forEach(record => {
+        const hours = record.clockOut 
+          ? ((new Date(record.clockOut) - new Date(record.clockIn)) / (1000 * 60 * 60)).toFixed(2)
+          : 'In progress';
+        
+        html += `<tr>
+          <td>${record.date}</td>
+          <td>${record.workerName}</td>
+          <td>${record.employeeId}</td>
+          <td>${new Date(record.clockIn).toLocaleTimeString()}</td>
+          <td>${record.clockOut ? new Date(record.clockOut).toLocaleTimeString() : '-'}</td>
+          <td>${hours}</td>
+          <td>
+            <button class="btn-delete" onclick="deleteAttendance(${record.id})">Delete</button>
+          </td>
+        </tr>`;
+      });
+      
+      html += '</table>';
+      container.innerHTML = html;
+    }
+
+    function deleteAttendance(recordId) {
+      if (confirm('Are you sure you want to delete this attendance record?')) {
+        attendanceRecords = attendanceRecords.filter(r => r.id !== recordId);
+        saveData();
+        displayAllAttendance();
+      }
+    }
+
+    function calculateWages() {
+      const monthInput = document.getElementById('monthSelect').value;
+      
+      if (!monthInput) {
+        alert('Please select a month first!');
+        return;
+      }
+      
+      const container = document.getElementById('wageReport');
+      
+      // Filter records for selected month
+      const monthRecords = attendanceRecords.filter(r => r.date.startsWith(monthInput) && r.clockOut !== null);
+      
+      if (monthRecords.length === 0) {
+        container.innerHTML = '<p>No completed attendance records for this month.</p>';
+        return;
+      }
+      
+      // Calculate wages for each worker
+      const workerWages = {};
+      
+      monthRecords.forEach(record => {
+        const hours = (new Date(record.clockOut) - new Date(record.clockIn)) / (1000 * 60 * 60);
+        
+        if (!workerWages[record.workerId]) {
+          const worker = workers.find(w => w.id == record.workerId);
+          workerWages[record.workerId] = {
+            name: record.workerName,
+            employeeId: record.employeeId,
+            department: worker.department,
+            hourlyRate: worker.hourlyRate,
+            totalHours: 0,
+            daysWorked: 0,
+            totalWage: 0
+          };
+        }
+        
+        workerWages[record.workerId].totalHours += hours;
+        workerWages[record.workerId].daysWorked += 1;
+      });
+      
+      // Calculate wages
+      let html = '<table><tr><th>Worker</th><th>Employee ID</th><th>Department</th><th>Days Worked</th><th>Total Hours</th><th>Hourly Rate</th><th>Total Wage</th></tr>';
+      let grandTotal = 0;
+      
+      Object.values(workerWages).forEach(data => {
+        data.totalWage = data.totalHours * data.hourlyRate;
+        grandTotal += data.totalWage;
+        
+        html += `<tr>
+          <td>${data.name}</td>
+          <td>${data.employeeId}</td>
+          <td>${data.department}</td>
+          <td>${data.daysWorked}</td>
+          <td>${data.totalHours.toFixed(2)}</td>
+          <td>₹${data.hourlyRate}</td>
+          <td><strong>₹${data.totalWage.toFixed(2)}</strong></td>
+        </tr>`;
+      });
+      
+      html += `<tr style="background-color: #f0f0f0; font-weight: bold;">
+        <td colspan="6" style="text-align: right;">TOTAL PAYROLL:</td>
+        <td>₹${grandTotal.toFixed(2)}</td>
+      </tr>`;
+      
+      html += '</table>';
+      container.innerHTML = html;
+    }
+
+    function exportToCSV() {
+      const monthInput = document.getElementById('monthSelect').value;
+      
+      if (!monthInput) {
+        alert('Please select a month first and calculate wages!');
+        return;
+      }
+      
+      // Filter records for selected month
+      const monthRecords = attendanceRecords.filter(r => r.date.startsWith(monthInput) && r.clockOut !== null);
+      
+      if (monthRecords.length === 0) {
+        alert('No data to export for this month!');
+        return;
+      }
+      
+      // Create CSV content
+      let csv = 'Date,Worker Name,Employee ID,Department,Clock In,Clock Out,Hours Worked,Hourly Rate,Wage Earned\n';
+      
+      monthRecords.forEach(record => {
+        const worker = workers.find(w => w.id == record.workerId);
+        const hours = ((new Date(record.clockOut) - new Date(record.clockIn)) / (1000 * 60 * 60)).toFixed(2);
+        const wage = (hours * worker.hourlyRate).toFixed(2);
+        
+        csv += `${record.date},${record.workerName},${record.employeeId},${worker.department},${new Date(record.clockIn).toLocaleString()},${new Date(record.clockOut).toLocaleString()},${hours},${worker.hourlyRate},${wage}\n`;
+      });
+      
+      // Download CSV
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `attendance_wages_${monthInput}.csv`;
+      a.click();
+      window.URL.revokeObjectURL(url);
+      
+      alert('CSV file downloaded! You can now import this into KNIME.');
+    }
+
+    // Initialize the app
+    loadData();
+    displayWorkers();
+    displayAllAttendance();
+    
+    // Set today's date as default
+    const today = new Date().toISOString().split('T')[0];
+    document.getElementById('dateSelect').value = today;
+    
+    // Set current month as default
+    const currentMonth = new Date().toISOString().slice(0, 7);
+    document.getElementById('monthSelect').value = currentMonth;
+  </script>
+</body>
+</html>
