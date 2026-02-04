@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Factory Attendance Tracker</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -67,10 +68,16 @@
     .btn-delete:hover {
       background-color: #da190b;
     }
+    .loading {
+      text-align: center;
+      padding: 20px;
+      color: #666;
+    }
   </style>
 </head>
 <body>
   <h1>🏭 Factory Attendance & Wage Tracker</h1>
+  <p style="color: #666; font-size: 14px;">☁️ Cloud Sync Enabled - Works on all your devices!</p>
   
   <div class="container">
     <h2>Add New Worker</h2>
@@ -83,7 +90,7 @@
 
   <div class="container">
     <h2>Workers List</h2>
-    <div id="workersList"></div>
+    <div id="workersList" class="loading">Loading workers...</div>
   </div>
 
   <div class="container">
@@ -119,59 +126,88 @@
 
   <div class="container">
     <h2>📋 All Attendance Records</h2>
-    <div id="allAttendance"></div>
+    <div id="allAttendance" class="loading">Loading attendance...</div>
   </div>
 
   <script>
+    // Initialize Supabase
+    const SUPABASE_URL = 'https://psisdeevekkoonvgqvxs.supabase.co';
+    const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBzaXNkZWV2ZWtrb29udmdxdnhzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAyMDg1NzQsImV4cCI6MjA4NTc4NDU3NH0.wLJYLQf4LwwmVP__zLn8YwtX7-w0YCEb_La8PAGgyyc';
+    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
     let workers = [];
     let attendanceRecords = [];
 
-    // Load data from browser storage when page loads
-    function loadData() {
-      const savedWorkers = localStorage.getItem('factoryWorkers');
-      const savedAttendance = localStorage.getItem('factoryAttendance');
-      
-      if (savedWorkers) {
-        workers = JSON.parse(savedWorkers);
-      }
-      if (savedAttendance) {
-        attendanceRecords = JSON.parse(savedAttendance);
-        // Convert date strings back to Date objects
-        attendanceRecords.forEach(record => {
-          record.clockIn = new Date(record.clockIn);
-          if (record.clockOut) {
-            record.clockOut = new Date(record.clockOut);
-          }
-        });
+    // Load workers from Supabase
+    async function loadWorkers() {
+      try {
+        const { data, error } = await supabase
+          .from('workers')
+          .select('*')
+          .order('created_at', { ascending: true });
+        
+        if (error) throw error;
+        
+        workers = data || [];
+        displayWorkers();
+      } catch (error) {
+        console.error('Error loading workers:', error);
+        document.getElementById('workersList').innerHTML = '<p style="color: red;">Error loading workers. Please refresh the page.</p>';
       }
     }
 
-    // Save data to browser storage
-    function saveData() {
-      localStorage.setItem('factoryWorkers', JSON.stringify(workers));
-      localStorage.setItem('factoryAttendance', JSON.stringify(attendanceRecords));
+    // Load attendance from Supabase
+    async function loadAttendance() {
+      try {
+        const { data, error } = await supabase
+          .from('attendance')
+          .select('*')
+          .order('created_at', { ascending: false });
+        
+        if (error) throw error;
+        
+        attendanceRecords = (data || []).map(record => ({
+          ...record,
+          clockIn: new Date(record.clock_in),
+          clockOut: record.clock_out ? new Date(record.clock_out) : null
+        }));
+        
+        displayAllAttendance();
+      } catch (error) {
+        console.error('Error loading attendance:', error);
+        document.getElementById('allAttendance').innerHTML = '<p style="color: red;">Error loading attendance. Please refresh the page.</p>';
+      }
     }
 
-    function addWorker() {
+    async function addWorker() {
       const name = document.getElementById('workerName').value;
       const employeeId = document.getElementById('employeeId').value;
       const department = document.getElementById('department').value;
       const hourlyRate = document.getElementById('hourlyRate').value;
 
       if (name && employeeId && department && hourlyRate) {
-        const worker = {
-          id: Date.now(),
-          name: name,
-          employeeId: employeeId,
-          department: department,
-          hourlyRate: parseFloat(hourlyRate)
-        };
-        
-        workers.push(worker);
-        saveData();
-        displayWorkers();
-        clearForm();
-        alert('Worker added successfully!');
+        try {
+          const { data, error } = await supabase
+            .from('workers')
+            .insert([
+              {
+                name: name,
+                employee_id: employeeId,
+                department: department,
+                hourly_rate: parseFloat(hourlyRate)
+              }
+            ])
+            .select();
+
+          if (error) throw error;
+
+          clearForm();
+          alert('Worker added successfully!');
+          await loadWorkers();
+        } catch (error) {
+          console.error('Error adding worker:', error);
+          alert('Error adding worker. Please try again.');
+        }
       } else {
         alert('Please fill in all fields!');
       }
@@ -191,11 +227,10 @@
       workers.forEach(worker => {
         html += `<tr>
           <td>${worker.name}</td>
-          <td>${worker.employeeId}</td>
+          <td>${worker.employee_id}</td>
           <td>${worker.department}</td>
-          <td>₹${worker.hourlyRate}</td>
+          <td>₹${worker.hourly_rate}</td>
           <td>
-            <button class="btn-edit" onclick="editWorker(${worker.id})">Edit</button>
             <button class="btn-delete" onclick="deleteWorker(${worker.id})">Delete</button>
           </td>
         </tr>`;
@@ -206,27 +241,21 @@
       updateWorkerSelect();
     }
 
-    function editWorker(workerId) {
-      const worker = workers.find(w => w.id === workerId);
-      if (worker) {
-        document.getElementById('workerName').value = worker.name;
-        document.getElementById('employeeId').value = worker.employeeId;
-        document.getElementById('department').value = worker.department;
-        document.getElementById('hourlyRate').value = worker.hourlyRate;
-        
-        // Remove the old worker
-        workers = workers.filter(w => w.id !== workerId);
-        saveData();
-        displayWorkers();
-        alert('Edit the details above and click "Add Worker" to save changes');
-      }
-    }
-
-    function deleteWorker(workerId) {
+    async function deleteWorker(workerId) {
       if (confirm('Are you sure you want to delete this worker?')) {
-        workers = workers.filter(w => w.id !== workerId);
-        saveData();
-        displayWorkers();
+        try {
+          const { error } = await supabase
+            .from('workers')
+            .delete()
+            .eq('id', workerId);
+
+          if (error) throw error;
+
+          await loadWorkers();
+        } catch (error) {
+          console.error('Error deleting worker:', error);
+          alert('Error deleting worker. Please try again.');
+        }
       }
     }
 
@@ -242,11 +271,11 @@
       select.innerHTML = '<option value="">-- Select a worker --</option>';
       
       workers.forEach(worker => {
-        select.innerHTML += `<option value="${worker.id}">${worker.name} (${worker.employeeId})</option>`;
+        select.innerHTML += `<option value="${worker.id}">${worker.name} (${worker.employee_id})</option>`;
       });
     }
 
-    function addAttendanceRecord() {
+    async function addAttendanceRecord() {
       const workerId = document.getElementById('workerSelect').value;
       const selectedDate = document.getElementById('dateSelect').value;
       const clockInTime = document.getElementById('clockInTime').value;
@@ -269,7 +298,6 @@
       
       const worker = workers.find(w => w.id == workerId);
       
-      // Create full date-time objects
       const clockInDateTime = new Date(`${selectedDate}T${clockInTime}`);
       const clockOutDateTime = new Date(`${selectedDate}T${clockOutTime}`);
       
@@ -277,24 +305,31 @@
         alert('Clock out time must be after clock in time!');
         return;
       }
-      
-      const record = {
-        id: Date.now(),
-        workerId: workerId,
-        workerName: worker.name,
-        employeeId: worker.employeeId,
-        clockIn: clockInDateTime,
-        clockOut: clockOutDateTime,
-        date: selectedDate
-      };
-      
-      attendanceRecords.push(record);
-      saveData();
-      displayAllAttendance();
-      alert(`Attendance added for ${worker.name} on ${selectedDate}`);
-      
-      // Reset the worker selection
-      document.getElementById('workerSelect').value = '';
+
+      try {
+        const { data, error } = await supabase
+          .from('attendance')
+          .insert([
+            {
+              worker_id: workerId,
+              worker_name: worker.name,
+              employee_id: worker.employee_id,
+              clock_in: clockInDateTime.toISOString(),
+              clock_out: clockOutDateTime.toISOString(),
+              date: selectedDate
+            }
+          ])
+          .select();
+
+        if (error) throw error;
+
+        alert(`Attendance added for ${worker.name} on ${selectedDate}`);
+        document.getElementById('workerSelect').value = '';
+        await loadAttendance();
+      } catch (error) {
+        console.error('Error adding attendance:', error);
+        alert('Error adding attendance. Please try again.');
+      }
     }
 
     function displayAllAttendance() {
@@ -307,17 +342,17 @@
       
       let html = '<table><tr><th>Date</th><th>Worker</th><th>Employee ID</th><th>Clock In</th><th>Clock Out</th><th>Hours</th><th>Actions</th></tr>';
       
-      attendanceRecords.slice().reverse().forEach(record => {
+      attendanceRecords.forEach(record => {
         const hours = record.clockOut 
-          ? ((new Date(record.clockOut) - new Date(record.clockIn)) / (1000 * 60 * 60)).toFixed(2)
+          ? ((record.clockOut - record.clockIn) / (1000 * 60 * 60)).toFixed(2)
           : 'In progress';
         
         html += `<tr>
           <td>${record.date}</td>
-          <td>${record.workerName}</td>
-          <td>${record.employeeId}</td>
-          <td>${new Date(record.clockIn).toLocaleTimeString()}</td>
-          <td>${record.clockOut ? new Date(record.clockOut).toLocaleTimeString() : '-'}</td>
+          <td>${record.worker_name}</td>
+          <td>${record.employee_id}</td>
+          <td>${record.clockIn.toLocaleTimeString()}</td>
+          <td>${record.clockOut ? record.clockOut.toLocaleTimeString() : '-'}</td>
           <td>${hours}</td>
           <td>
             <button class="btn-delete" onclick="deleteAttendance(${record.id})">Delete</button>
@@ -329,15 +364,25 @@
       container.innerHTML = html;
     }
 
-    function deleteAttendance(recordId) {
+    async function deleteAttendance(recordId) {
       if (confirm('Are you sure you want to delete this attendance record?')) {
-        attendanceRecords = attendanceRecords.filter(r => r.id !== recordId);
-        saveData();
-        displayAllAttendance();
+        try {
+          const { error } = await supabase
+            .from('attendance')
+            .delete()
+            .eq('id', recordId);
+
+          if (error) throw error;
+
+          await loadAttendance();
+        } catch (error) {
+          console.error('Error deleting attendance:', error);
+          alert('Error deleting attendance. Please try again.');
+        }
       }
     }
 
-    function calculateWages() {
+    async function calculateWages() {
       const monthInput = document.getElementById('monthSelect').value;
       
       if (!monthInput) {
@@ -359,23 +404,23 @@
       const workerWages = {};
       
       monthRecords.forEach(record => {
-        const hours = (new Date(record.clockOut) - new Date(record.clockIn)) / (1000 * 60 * 60);
+        const hours = (record.clockOut - record.clockIn) / (1000 * 60 * 60);
         
-        if (!workerWages[record.workerId]) {
-          const worker = workers.find(w => w.id == record.workerId);
-          workerWages[record.workerId] = {
-            name: record.workerName,
-            employeeId: record.employeeId,
+        if (!workerWages[record.worker_id]) {
+          const worker = workers.find(w => w.id == record.worker_id);
+          workerWages[record.worker_id] = {
+            name: record.worker_name,
+            employeeId: record.employee_id,
             department: worker.department,
-            hourlyRate: worker.hourlyRate,
+            hourlyRate: worker.hourly_rate,
             totalHours: 0,
             daysWorked: 0,
             totalWage: 0
           };
         }
         
-        workerWages[record.workerId].totalHours += hours;
-        workerWages[record.workerId].daysWorked += 1;
+        workerWages[record.worker_id].totalHours += hours;
+        workerWages[record.worker_id].daysWorked += 1;
       });
       
       // Calculate wages
@@ -414,7 +459,6 @@
         return;
       }
       
-      // Filter records for selected month
       const monthRecords = attendanceRecords.filter(r => r.date.startsWith(monthInput) && r.clockOut !== null);
       
       if (monthRecords.length === 0) {
@@ -422,18 +466,16 @@
         return;
       }
       
-      // Create CSV content
       let csv = 'Date,Worker Name,Employee ID,Department,Clock In,Clock Out,Hours Worked,Hourly Rate,Wage Earned\n';
       
       monthRecords.forEach(record => {
-        const worker = workers.find(w => w.id == record.workerId);
-        const hours = ((new Date(record.clockOut) - new Date(record.clockIn)) / (1000 * 60 * 60)).toFixed(2);
-        const wage = (hours * worker.hourlyRate).toFixed(2);
+        const worker = workers.find(w => w.id == record.worker_id);
+        const hours = ((record.clockOut - record.clockIn) / (1000 * 60 * 60)).toFixed(2);
+        const wage = (hours * worker.hourly_rate).toFixed(2);
         
-        csv += `${record.date},${record.workerName},${record.employeeId},${worker.department},${new Date(record.clockIn).toLocaleString()},${new Date(record.clockOut).toLocaleString()},${hours},${worker.hourlyRate},${wage}\n`;
+        csv += `${record.date},${record.worker_name},${record.employee_id},${worker.department},${record.clockIn.toLocaleString()},${record.clockOut.toLocaleString()},${hours},${worker.hourly_rate},${wage}\n`;
       });
       
-      // Download CSV
       const blob = new Blob([csv], { type: 'text/csv' });
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -446,17 +488,18 @@
     }
 
     // Initialize the app
-    loadData();
-    displayWorkers();
-    displayAllAttendance();
-    
-    // Set today's date as default
-    const today = new Date().toISOString().split('T')[0];
-    document.getElementById('dateSelect').value = today;
-    
-    // Set current month as default
-    const currentMonth = new Date().toISOString().slice(0, 7);
-    document.getElementById('monthSelect').value = currentMonth;
+    async function init() {
+      await loadWorkers();
+      await loadAttendance();
+      
+      const today = new Date().toISOString().split('T')[0];
+      document.getElementById('dateSelect').value = today;
+      
+      const currentMonth = new Date().toISOString().slice(0, 7);
+      document.getElementById('monthSelect').value = currentMonth;
+    }
+
+    init();
   </script>
 </body>
 </html>
