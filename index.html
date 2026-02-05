@@ -121,6 +121,7 @@
       <input type="time" id="clockOutTime" value="17:00" style="padding: 8px;">
       <br><br>
       <button onclick="addAttendanceRecord()">Add Attendance</button>
+      <button onclick="generateSampleAttendance()" style="background-color: #9C27B0;">Auto-Generate 30 Days Data</button>
     </div>
   </div>
 
@@ -231,15 +232,42 @@
           <td>${worker.department}</td>
           <td>₹${worker.hourly_rate}</td>
           <td>
-  <button class="btn-edit" onclick="editWorker(${worker.id})">Edit</button>
-  <button class="btn-delete" onclick="deleteWorker(${worker.id})">Delete</button>
-</td>
+            <button class="btn-edit" onclick="editWorker(${worker.id})">Edit</button>
+            <button class="btn-delete" onclick="deleteWorker(${worker.id})">Delete</button>
+          </td>
         </tr>`;
       });
       
       html += '</table>';
       container.innerHTML = html;
       updateWorkerSelect();
+    }
+
+    async function editWorker(workerId) {
+      const worker = workers.find(w => w.id === workerId);
+      if (worker) {
+        // Fill the form with worker data
+        document.getElementById('workerName').value = worker.name;
+        document.getElementById('employeeId').value = worker.employee_id;
+        document.getElementById('department').value = worker.department;
+        document.getElementById('hourlyRate').value = worker.hourly_rate;
+        
+        // Delete the old worker from database
+        try {
+          const { error } = await sb
+            .from('workers')
+            .delete()
+            .eq('id', workerId);
+
+          if (error) throw error;
+
+          await loadWorkers();
+          alert('Edit the details above and click "Add Worker" to save changes');
+        } catch (error) {
+          console.error('Error editing worker:', error);
+          alert('Error editing worker: ' + error.message);
+        }
+      }
     }
 
     async function deleteWorker(workerId) {
@@ -259,32 +287,7 @@
         }
       }
     }
-async function editWorker(workerId) {
-  const worker = workers.find(w => w.id === workerId);
-  if (worker) {
-    // Fill the form with worker data
-    document.getElementById('workerName').value = worker.name;
-    document.getElementById('employeeId').value = worker.employee_id;
-    document.getElementById('department').value = worker.department;
-    document.getElementById('hourlyRate').value = worker.hourly_rate;
-    
-    // Delete the old worker from database
-    try {
-      const { error } = await sb
-        .from('workers')
-        .delete()
-        .eq('id', workerId);
 
-      if (error) throw error;
-
-      await loadWorkers();
-      alert('Edit the details above and click "Add Worker" to save changes');
-    } catch (error) {
-      console.error('Error editing worker:', error);
-      alert('Error editing worker: ' + error.message);
-    }
-  }
-}
     function clearForm() {
       document.getElementById('workerName').value = '';
       document.getElementById('employeeId').value = '';
@@ -355,6 +358,73 @@ async function editWorker(workerId) {
       } catch (error) {
         console.error('Error adding attendance:', error);
         alert('Error adding attendance: ' + error.message);
+      }
+    }
+
+    async function generateSampleAttendance() {
+      if (workers.length === 0) {
+        alert('Please add workers first!');
+        return;
+      }
+
+      if (!confirm('This will generate 30 days of sample attendance data for all workers. Continue?')) {
+        return;
+      }
+
+      const today = new Date();
+      const recordsToInsert = [];
+      
+      // Generate data for past 30 days
+      for (let dayOffset = 0; dayOffset < 30; dayOffset++) {
+        const date = new Date(today);
+        date.setDate(date.getDate() - dayOffset);
+        
+        // Skip Sundays
+        if (date.getDay() === 0) continue;
+        
+        const dateStr = date.toISOString().split('T')[0];
+        
+        // Each worker has 80% chance of working each day
+        workers.forEach(worker => {
+          if (Math.random() > 0.2) {  // 80% attendance rate
+            // Random clock in between 8:00 AM and 9:00 AM
+            const clockInHour = 8 + Math.random();
+            const clockInDate = new Date(date);
+            clockInDate.setHours(Math.floor(clockInHour), Math.floor((clockInHour % 1) * 60), 0);
+            
+            // Random work duration between 7 and 9 hours
+            const workHours = 7 + Math.random() * 2;
+            const clockOutDate = new Date(clockInDate);
+            clockOutDate.setHours(
+              clockInDate.getHours() + Math.floor(workHours),
+              clockInDate.getMinutes() + Math.floor((workHours % 1) * 60)
+            );
+            
+            recordsToInsert.push({
+              worker_id: worker.id,
+              worker_name: worker.name,
+              employee_id: worker.employee_id,
+              clock_in: clockInDate.toISOString(),
+              clock_out: clockOutDate.toISOString(),
+              date: dateStr
+            });
+          }
+        });
+      }
+
+      try {
+        const { data, error } = await sb
+          .from('attendance')
+          .insert(recordsToInsert)
+          .select();
+
+        if (error) throw error;
+
+        alert(`Successfully generated ${recordsToInsert.length} attendance records for the past 30 days!`);
+        await loadAttendance();
+      } catch (error) {
+        console.error('Error generating sample data:', error);
+        alert('Error generating sample data: ' + error.message);
       }
     }
 
