@@ -305,67 +305,67 @@
     }
 
     async function addAttendanceRecord() {
-      const workerId = document.getElementById('workerSelect').value;
-      const selectedDate = document.getElementById('dateSelect').value;
-      const clockInTime = document.getElementById('clockInTime').value;
-      const clockOutTime = document.getElementById('clockOutTime').value;
-      
-      if (!workerId) {
-        alert('Please select a worker!');
-        return;
-      }
-      
-      if (!selectedDate) {
-        alert('Please select a date!');
-        return;
-      }
-      
-      if (!clockInTime || !clockOutTime) {
-        alert('Please enter both clock in and clock out times!');
-        return;
-      }
-      
-      const worker = workers.find(w => w.id == workerId);
-      
-      const clockInDateTime = new Date(`${selectedDate}T${clockInTime}`);
-      const clockOutDateTime = new Date(`${selectedDate}T${clockOutTime}`);
-      
-      if (clockOutDateTime <= clockInDateTime) {
-        alert('Clock out time must be after clock in time!');
-        return;
-      }
+  const workerId = document.getElementById('workerSelect').value;
+  const selectedDate = document.getElementById('dateSelect').value;
+  const clockInTime = document.getElementById('clockInTime').value;
+  const clockOutTime = document.getElementById('clockOutTime').value;
+  
+  if (!workerId) {
+    alert('Please select a worker!');
+    return;
+  }
+  
+  if (!selectedDate) {
+    alert('Please select a date!');
+    return;
+  }
+  
+  if (!clockInTime || !clockOutTime) {
+    alert('Please enter both clock in and clock out times!');
+    return;
+  }
+  
+  const worker = workers.find(w => w.id == parseInt(workerId));
+  
+  if (!worker) {
+    alert('Worker not found! Please refresh the page and try again.');
+    console.error('Worker ID:', workerId, 'Workers:', workers);
+    return;
+  }
+  
+  const clockInDateTime = new Date(`${selectedDate}T${clockInTime}`);
+  const clockOutDateTime = new Date(`${selectedDate}T${clockOutTime}`);
+  
+  if (clockOutDateTime <= clockInDateTime) {
+    alert('Clock out time must be after clock in time!');
+    return;
+  }
 
-      try {
-        const { data, error } = await sb
-          .from('attendance')
-          .insert([
-            {
-              worker_id: workerId,
-              worker_name: worker.name,
-              employee_id: worker.employee_id,
-              clock_in: clockInDateTime.toISOString(),
-              clock_out: clockOutDateTime.toISOString(),
-              date: selectedDate
-            }
-          ])
-          .select();
+  try {
+    const { data, error } = await sb
+      .from('attendance')
+      .insert([
+        {
+          worker_id: parseInt(workerId),
+          worker_name: worker.name,
+          employee_id: worker.employee_id,
+          clock_in: clockInDateTime.toISOString(),
+          clock_out: clockOutDateTime.toISOString(),
+          date: selectedDate
+        }
+      ])
+      .select();
 
-        if (error) throw error;
+    if (error) throw error;
 
-        alert(`Attendance added for ${worker.name} on ${selectedDate}`);
-        document.getElementById('workerSelect').value = '';
-        await loadAttendance();
-      } catch (error) {
-        console.error('Error adding attendance:', error);
-        alert('Error adding attendance: ' + error.message);
-      }
-    }
-
-    async function generateSampleAttendance() {
-      if (workers.length === 0) {
-        alert('Please add workers first!');
-        return;
-      }
+    alert(`Attendance added for ${worker.name} on ${selectedDate}`);
+    document.getElementById('workerSelect').value = '';
+    await loadAttendance();
+  } catch (error) {
+    console.error('Error adding attendance:', error);
+    alert('Error adding attendance: ' + error.message);
+  }
+}
 
       if (!confirm('This will generate 30 days of sample attendance data for all workers. Continue?')) {
         return;
