@@ -231,8 +231,9 @@
           <td>${worker.department}</td>
           <td>₹${worker.hourly_rate}</td>
           <td>
-            <button class="btn-delete" onclick="deleteWorker(${worker.id})">Delete</button>
-          </td>
+  <button class="btn-edit" onclick="editWorker(${worker.id})">Edit</button>
+  <button class="btn-delete" onclick="deleteWorker(${worker.id})">Delete</button>
+</td>
         </tr>`;
       });
       
@@ -258,7 +259,32 @@
         }
       }
     }
+async function editWorker(workerId) {
+  const worker = workers.find(w => w.id === workerId);
+  if (worker) {
+    // Fill the form with worker data
+    document.getElementById('workerName').value = worker.name;
+    document.getElementById('employeeId').value = worker.employee_id;
+    document.getElementById('department').value = worker.department;
+    document.getElementById('hourlyRate').value = worker.hourly_rate;
+    
+    // Delete the old worker from database
+    try {
+      const { error } = await sb
+        .from('workers')
+        .delete()
+        .eq('id', workerId);
 
+      if (error) throw error;
+
+      await loadWorkers();
+      alert('Edit the details above and click "Add Worker" to save changes');
+    } catch (error) {
+      console.error('Error editing worker:', error);
+      alert('Error editing worker: ' + error.message);
+    }
+  }
+}
     function clearForm() {
       document.getElementById('workerName').value = '';
       document.getElementById('employeeId').value = '';
